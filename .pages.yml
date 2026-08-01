@@ -7,7 +7,6 @@ content:
     label: 博客文章 (Posts)
     type: collection
     path: src/content/posts
-    # 删除了原来错误的 format 行，让它使用默认的 frontmatter 解析
     fields:
       - name: title
         label: 文章标题
@@ -17,10 +16,13 @@ content:
         label: 文章简介
         type: string
         required: true
-      - name: publishDate
+      - name: pubDatetime
         label: 发布日期
         type: datetime
         required: true
+      - name: modDatetime
+        label: 修改日期
+        type: datetime
       - name: tags
         label: 标签 (Tags)
         type: list
