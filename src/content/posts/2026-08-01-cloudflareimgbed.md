@@ -2,7 +2,7 @@
 title: CloudFlare_ImgBed 图床
 description: CloudFlare_ImgBed 图床使用方法记录
 pubDatetime: 2026-08-01
-tags: cloudflare
+tags: astro
 draft: false
 ---
 # CloudFlare_ImgBed 图床使用：
