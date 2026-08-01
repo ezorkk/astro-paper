@@ -1,0 +1,33 @@
+media:
+  input: public/assets
+  output: /assets
+
+content:
+  - name: posts
+    label: 博客文章 (Posts)
+    type: collection
+    path: src/content/post
+    # 删除了原来错误的 format 行，让它使用默认的 frontmatter 解析
+    fields:
+      - name: title
+        label: 文章标题
+        type: string
+        required: true
+      - name: description
+        label: 文章简介
+        type: string
+        required: true
+      - name: publishDate
+        label: 发布日期
+        type: datetime
+        required: true
+      - name: tags
+        label: 标签 (Tags)
+        type: list
+      - name: draft
+        label: 是否为草稿
+        type: boolean
+        default: false
+      - name: body
+        label: 正文内容
+        type: rich-text
