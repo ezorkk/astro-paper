@@ -6,7 +6,7 @@ content:
   - name: posts
     label: 博客文章 (Posts)
     type: collection
-    path: src/content/post
+    path: src/content/posts
     # 删除了原来错误的 format 行，让它使用默认的 frontmatter 解析
     fields:
       - name: title
