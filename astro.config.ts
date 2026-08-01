@@ -60,10 +60,16 @@ export default defineConfig({
   },
   fonts: [
     {
-      name: "Google Sans Code",
+      name: "Noto Sans SC",
       cssVariable: "--font-google-sans-code",
       provider: fontProviders.google(),
-      fallbacks: ["monospace"],
+      fallbacks: [
+        "system-ui", 
+        "-apple-system", 
+        "PingFang SC",    // 苹果系统中文
+        "Microsoft YaHei", // Windows 系统中文
+        "sans-serif"
+      ],
       weights: [300, 400, 500, 600, 700],
       styles: ["normal", "italic"],
       formats: ["woff", "ttf"],
