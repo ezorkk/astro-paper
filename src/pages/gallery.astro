@@ -1,0 +1,134 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import Header from "@/components/Header.astro";
+import Breadcrumb from "@/components/Breadcrumb.astro";
+import Main from "@/components/Main.astro";
+import Footer from "@/components/Footer.astro";
+import config from "@/config";
+---
+
+<Layout title={`Gallery | ${config.site.title}`} description="Photo gallery">
+  <Header />
+  <Breadcrumb />
+
+  <Main pageTitle="Gallery">
+    <!-- 瀑布流核心：用 columns 替代 grid，列数响应式变化 -->
+    <div 
+      id="gallery" 
+      class="columns-2 gap-3 sm:columns-3 sm:gap-4 lg:columns-4"
+    >
+      <div class="col-span-full py-12 text-center text-skin-muted">
+        Loading...
+      </div>
+    </div>
+  </Main>
+
+  <Footer />
+</Layout>
+
+<!-- Lightbox overlay -->
+<div
+  id="lightbox"
+  class="fixed inset-0 z-50 hidden items-center justify-center bg-skin-bg/95 p-4 backdrop-blur-sm"
+  aria-hidden="true"
+  role="dialog"
+  aria-modal="true"
+>
+  <button
+    id="lightbox-close"
+    class="absolute right-4 top-4 size-10 text-skin-base/70 hover:text-skin-accent"
+    aria-label="Close lightbox"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-6">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  </button>
+  <img id="lightbox-img" src="" alt="" class="max-h-[85vh] max-w-full object-contain rounded-md" />
+</div>
+
+<script>
+  interface GalleryImage {
+    url: string;
+    name: string;
+  }
+
+  const gallery = document.getElementById("gallery");
+  const lightbox = document.getElementById("lightbox") as HTMLDivElement;
+  const lightboxImg = document.getElementById("lightbox-img") as HTMLImageElement;
+  const lightboxClose = document.getElementById("lightbox-close") as HTMLButtonElement;
+
+  function openLightbox(src: string, alt: string) {
+    lightboxImg.src = src;
+    lightboxImg.alt = alt;
+    lightbox.classList.remove("hidden");
+    lightbox.classList.add("flex");
+    lightbox.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeLightbox() {
+    lightbox.classList.add("hidden");
+    lightbox.classList.remove("flex");
+    lightbox.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  lightboxClose?.addEventListener("click", closeLightbox);
+  lightbox?.addEventListener("click", (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeLightbox();
+  });
+
+  async function loadGallery() {
+    if (!gallery) return;
+    try {
+      const res = await fetch("/api/gallery");
+      const images: GalleryImage[] = await res.json();
+
+      if (images.length === 0) {
+        gallery.innerHTML =
+          '<div class="col-span-full py-12 text-center text-skin-muted">No images yet.</div>';
+        return;
+      }
+
+      gallery.innerHTML = images
+        .map(
+          (img) => `
+        <button
+          class="group mb-3 block w-full overflow-hidden rounded-lg border border-skin-border bg-skin-card transition-all duration-200 hover:border-skin-accent/60 hover:shadow-sm break-inside-avoid"
+          data-src="${img.url}"
+          data-name="${img.name}"
+          aria-label="View ${img.name}"
+        >
+          <img
+            src="${img.url}"
+            alt="${img.name}"
+            loading="lazy"
+            class="block w-full h-auto transition-transform duration-300 group-hover:scale-105"
+          />
+        </button>
+      `
+        )
+        .join("");
+
+      // 绑定点击事件
+      gallery.querySelectorAll("button[data-src]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const src = btn.getAttribute("data-src") || "";
+          const name = btn.getAttribute("data-name") || "";
+          openLightbox(src, name);
+        });
+      });
+    } catch (e) {
+      console.error("Gallery load error:", e);
+      gallery.innerHTML =
+        '<div class="col-span-full py-12 text-center text-skin-muted">Failed to load gallery.</div>';
+    }
+  }
+
+  loadGallery();
+  document.addEventListener("astro:page-load", loadGallery);
+</script>
