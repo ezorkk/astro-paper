@@ -1,4 +1,4 @@
-// /api/gallery.ts（项目根目录）
+/// <reference types="node" />
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const IMGBED_DOMAIN = process.env.IMGBED_DOMAIN || "https://i.022311.xyz";
