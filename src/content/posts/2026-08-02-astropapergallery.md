@@ -4,13 +4,10 @@ description: 面向 Astro Paper v6 + Vercel 部署场景，从零开始一步步
 pubDatetime: 2026-08-02
 draft: false
 ---
-```markdown
 # Astro Paper 画廊页面从零搭建完整教程
 
-> 本文档面向 Astro Paper v6 + Vercel 部署场景，从零开始一步步搭建一个与主题风格完全一致的图片画廊页面。
->
-> 预计阅读时间：20 分钟
-> 预计操作时间：15 分钟
+本文档面向 Astro Paper v6 + Vercel 部署场景，从零开始一步步搭建一个与主题风格完全一致的图片画廊页面。
+
 
 ---
 
@@ -1345,6 +1342,3 @@ document.addEventListener("astro:page-load", loadGallery);
 
 *文档版本：v1.0*
 *最后更新：2026-08-02*
-
-```
-
