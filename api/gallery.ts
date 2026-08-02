@@ -6,7 +6,6 @@ export default async function handler(req, res) {
   const TARGET_DIR = process.env.IMGBED_GALLERY_DIR || "/nfsw";
 
   try {
-    // 兜底校验：Token 未配置时直接返回明确错误
     if (!ADMIN_TOKEN) {
       res.status(500).json({ error: "Admin token is not configured" });
       return;
@@ -17,7 +16,6 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
     });
 
-    // 图床接口异常时返回详情
     if (!response.ok) {
       const errText = await response.text();
       console.error("[gallery] Imgbed API error:", response.status, errText);
@@ -42,9 +40,10 @@ export default async function handler(req, res) {
     res.status(200).json(images);
   } catch (e) {
     console.error("[gallery] Server error:", e);
+    const msg = e instanceof Error ? e.message : "Unknown error";
     res.status(500).json({
       error: "Internal server error",
-      message: e.message,
+      message: msg,
     });
   }
 }
