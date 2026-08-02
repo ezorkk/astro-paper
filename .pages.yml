@@ -23,12 +23,6 @@ content:
       - name: modDatetime
         label: 修改日期
         type: datetime
-      - name: tags
-        label: 标签
-        type: list
-        default: []
-        items:
-          type: string
       - name: draft
         label: 是否为草稿
         type: boolean
