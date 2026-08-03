@@ -12,14 +12,16 @@ import config from "@/config";
   <Breadcrumb />
 
   <Main pageTitle="Gallery">
-  <div id="gallery-status" class="py-12 text-center text-muted-foreground">
-    Loading...
-  </div>
-
-  <!-- 行优先瀑布流容器 -->
-  <div id="gallery" class="relative hidden">
-  </div>
-</Main>
+    <!-- 瀑布流核心：用 columns 替代 grid，列数响应式变化 -->
+    <div 
+      id="gallery" 
+      class="columns-2 gap-3 sm:columns-3 sm:gap-4 lg:columns-4"
+    >
+      <div class="col-span-full py-12 text-center text-skin-muted">
+        Loading...
+      </div>
+    </div>
+  </Main>
 
   <Footer />
 </Layout>
@@ -50,40 +52,13 @@ import config from "@/config";
     url: string;
     name: string;
   }
-  interface ImageMeta extends GalleryImage {
-    naturalW: number;
-    naturalH: number;
-  }
 
-  const gallery = document.getElementById("gallery") as HTMLDivElement | null;
-  const statusEl = document.getElementById("gallery-status") as HTMLDivElement | null;
-  const lightbox = document.getElementById("lightbox") as HTMLDivElement | null;
-  const lightboxImg = document.getElementById("lightbox-img") as HTMLImageElement | null;
-  const lightboxClose = document.getElementById("lightbox-close") as HTMLButtonElement | null;
+  const gallery = document.getElementById("gallery");
+  const lightbox = document.getElementById("lightbox") as HTMLDivElement;
+  const lightboxImg = document.getElementById("lightbox-img") as HTMLImageElement;
+  const lightboxClose = document.getElementById("lightbox-close") as HTMLButtonElement;
 
-  const imageMetaList: ImageMeta[] = [];
-  let rawImageList: GalleryImage[] = [];
-  // 提高并发数，加快加载速度
-  const CONCURRENT_LIMIT = 6;
-  let loadIndex = 0;
-  let colHeights: number[] = [];
-  const gap = 16;
-  // 预估卡片高度，用于骨架占位
-  const ESTIMATED_HEIGHT = 220;
-  let layoutLock = false;
-  let scrollTimer: number | undefined;
-  let resizeTimer: number | undefined;
-
-  const getColumnCount = (): number => {
-    const w = window.innerWidth;
-    if (w >= 1024) return 4;
-    if (w >= 640) return 3;
-    return 2;
-  };
-
-  // ========== 灯箱逻辑 ==========
-  function openLightbox(src: string, alt: string): void {
-    if (!lightbox || !lightboxImg) return;
+  function openLightbox(src: string, alt: string) {
     lightboxImg.src = src;
     lightboxImg.alt = alt;
     lightbox.classList.remove("hidden");
@@ -91,13 +66,14 @@ import config from "@/config";
     lightbox.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
   }
-  function closeLightbox(): void {
-    if (!lightbox) return;
+
+  function closeLightbox() {
     lightbox.classList.add("hidden");
     lightbox.classList.remove("flex");
     lightbox.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
   }
+
   lightboxClose?.addEventListener("click", closeLightbox);
   lightbox?.addEventListener("click", (e) => {
     if (e.target === lightbox) closeLightbox();
@@ -106,186 +82,53 @@ import config from "@/config";
     if (e.key === "Escape") closeLightbox();
   });
 
-  // ========== 预加载图片尺寸 ==========
-  function preloadImgSize(url: string): Promise<{ naturalW: number; naturalH: number }> {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve({
-        naturalW: img.naturalWidth,
-        naturalH: img.naturalHeight
-      });
-      img.onerror = () => resolve({ naturalW: 400, naturalH: 300 });
-      img.src = url;
-    });
-  }
-
-  // ========== 先渲染骨架占位（立刻显示，不等加载） ==========
-  function renderSkeleton(images: GalleryImage[]): void {
+  async function loadGallery() {
     if (!gallery) return;
-    gallery.innerHTML = "";
-
-    const colCount = getColumnCount();
-    const containerWidth = gallery.offsetWidth;
-    const itemWidth = (containerWidth - gap * (colCount - 1)) / colCount;
-    colHeights = new Array(colCount).fill(0);
-
-    images.forEach((img) => {
-      const minHeight = Math.min(...colHeights);
-      const colIndex = colHeights.indexOf(minHeight);
-
-      const btn = document.createElement("button");
-      btn.className = "group absolute overflow-hidden rounded-lg border border-border bg-muted/30 transition-all duration-200 hover:border-accent/60";
-      btn.style.width = `${itemWidth}px`;
-      btn.style.height = `${ESTIMATED_HEIGHT}px`;
-      btn.style.left = `${colIndex * (itemWidth + gap)}px`;
-      btn.style.top = `${minHeight}px`;
-      btn.dataset.src = img.url;
-      btn.dataset.name = img.name;
-      btn.setAttribute("aria-label", `View ${img.name}`);
-
-      const image = document.createElement("img");
-      image.src = img.url;
-      image.alt = img.name;
-      image.loading = "lazy";
-      image.className = "block w-full h-full object-cover opacity-0 transition-opacity duration-300";
-      
-      // 图片加载完成后，修正高度并淡入
-      image.onload = () => {
-        const scale = itemWidth / image.naturalWidth;
-        const realHeight = image.naturalHeight * scale;
-        const heightDiff = realHeight - ESTIMATED_HEIGHT;
-
-        btn.style.height = `${realHeight}px`;
-        image.classList.remove("opacity-0");
-        
-        // 更新对应列高度，后续图片基于新高度排列
-        colHeights[colIndex] += heightDiff;
-        gallery.style.height = `${Math.max(...colHeights)}px`;
-      };
-
-      btn.appendChild(image);
-      btn.addEventListener("click", () => openLightbox(img.url, img.name));
-      gallery.appendChild(btn);
-
-      // 按预估高度更新列高，保证初始分列正确
-      colHeights[colIndex] = minHeight + ESTIMATED_HEIGHT + gap;
-    });
-
-    gallery.style.height = `${Math.max(...colHeights)}px`;
-  }
-
-  // ========== 全量重排（缩放/滚动校准） ==========
-  function reRenderAll(): void {
-    if (!gallery || imageMetaList.length === 0 || layoutLock) return;
-    layoutLock = true;
-    gallery.innerHTML = "";
-
-    const colCount = getColumnCount();
-    const containerWidth = gallery.offsetWidth;
-    const itemWidth = (containerWidth - gap * (colCount - 1)) / colCount;
-    colHeights = new Array(colCount).fill(0);
-
-    imageMetaList.forEach((item) => {
-      const scale = itemWidth / item.naturalW;
-      const itemHeight = item.naturalH * scale;
-      const minHeight = Math.min(...colHeights);
-      const colIndex = colHeights.indexOf(minHeight);
-
-      const btn = document.createElement("button");
-      btn.className = "group absolute overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-accent/60 hover:shadow-sm";
-      btn.style.width = `${itemWidth}px`;
-      btn.style.height = `${itemHeight}px`;
-      btn.style.left = `${colIndex * (itemWidth + gap)}px`;
-      btn.style.top = `${minHeight}px`;
-      btn.setAttribute("aria-label", `View ${item.name}`);
-
-      const img = document.createElement("img");
-      img.src = item.url;
-      img.alt = item.name;
-      img.className = "w-full h-full object-cover block transition-transform duration-300 group-hover:scale-105";
-      btn.appendChild(img);
-
-      btn.addEventListener("click", () => openLightbox(item.url, item.name));
-      gallery.appendChild(btn);
-
-      colHeights[colIndex] = minHeight + itemHeight + gap;
-    });
-
-    gallery.style.height = `${Math.max(...colHeights)}px`;
-    layoutLock = false;
-  }
-
-  // ========== 后台静默预加载尺寸，用于校准 ==========
-  function loadNext(): void {
-    if (loadIndex >= rawImageList.length) {
-      setTimeout(reRenderAll, 100);
-      return;
-    }
-
-    const current = loadIndex++;
-    const item = rawImageList[current];
-    preloadImgSize(item.url).then((meta) => {
-      imageMetaList.push({ ...item, ...meta });
-      loadNext();
-    });
-  }
-
-  // ========== 滚动/缩放校准 ==========
-  window.addEventListener("scroll", () => {
-    clearTimeout(scrollTimer);
-    scrollTimer = window.setTimeout(() => {
-      if (gallery && !gallery.classList.contains("hidden")) {
-        reRenderAll();
-      }
-    }, 150);
-  }, { passive: true });
-
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => {
-      if (gallery && !gallery.classList.contains("hidden")) reRenderAll();
-    }, 200);
-  });
-
-  // ========== 初始化：先出骨架，后台加载 ==========
-  async function loadGallery(): Promise<void> {
-    if (!gallery || !statusEl) return;
     try {
-      loadIndex = 0;
-      rawImageList = [];
-      imageMetaList.length = 0;
-      layoutLock = false;
-
       const res = await fetch("/api/gallery/");
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      rawImageList = await res.json() as GalleryImage[];
+      const images: GalleryImage[] = await res.json();
 
-      if (!Array.isArray(rawImageList) || rawImageList.length === 0) {
-        statusEl.textContent = "No images yet.";
+      if (images.length === 0) {
+        gallery.innerHTML =
+          '<div class="col-span-full py-12 text-center text-skin-muted">No images yet.</div>';
         return;
       }
 
-      statusEl.classList.add("hidden");
-      gallery.classList.remove("hidden");
+      gallery.innerHTML = images
+        .map(
+          (img) => `
+        <button
+          class="group mb-3 block w-full overflow-hidden rounded-lg border border-skin-border bg-skin-card transition-all duration-200 hover:border-skin-accent/60 hover:shadow-sm break-inside-avoid"
+          data-src="${img.url}"
+          data-name="${img.name}"
+          aria-label="View ${img.name}"
+        >
+          <img
+            src="${img.url}"
+            alt="${img.name}"
+            loading="lazy"
+            class="block w-full h-auto transition-transform duration-300 group-hover:scale-105"
+          />
+        </button>
+      `
+        )
+        .join("");
 
-      // 立刻渲染骨架，首屏秒出
-      requestAnimationFrame(() => {
-        renderSkeleton(rawImageList);
+      // 绑定点击事件
+      gallery.querySelectorAll("button[data-src]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const src = btn.getAttribute("data-src") || "";
+          const name = btn.getAttribute("data-name") || "";
+          openLightbox(src, name);
+        });
       });
-
-      // 后台静默预加载尺寸，全部加载完后最终校准一次
-      for (let i = 0; i < CONCURRENT_LIMIT; i++) {
-        loadNext();
-      }
-
     } catch (e) {
       console.error("Gallery load error:", e);
-      statusEl.textContent = "Failed to load gallery.";
+      gallery.innerHTML =
+        '<div class="col-span-full py-12 text-center text-skin-muted">Failed to load gallery.</div>';
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", loadGallery);
-  } else loadGallery();
+  loadGallery();
   document.addEventListener("astro:page-load", loadGallery);
 </script>
