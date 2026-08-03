@@ -46,7 +46,6 @@ import config from "@/config";
 </div>
 
 <script>
-  // 定义数据类型
   interface GalleryImage {
     url: string;
     name: string;
@@ -56,22 +55,22 @@ import config from "@/config";
     naturalH: number;
   }
 
-  // DOM 元素显式断言类型
   const gallery = document.getElementById("gallery") as HTMLDivElement | null;
   const statusEl = document.getElementById("gallery-status") as HTMLDivElement | null;
   const lightbox = document.getElementById("lightbox") as HTMLDivElement | null;
   const lightboxImg = document.getElementById("lightbox-img") as HTMLImageElement | null;
   const lightboxClose = document.getElementById("lightbox-close") as HTMLButtonElement | null;
 
-  // 数组显式声明类型，消除隐式 any
   const imageMetaList: ImageMeta[] = [];
   let rawImageList: GalleryImage[] = [];
-  const CONCURRENT_LIMIT = 4;
+  // 提高并发数，加快加载速度
+  const CONCURRENT_LIMIT = 6;
   let loadIndex = 0;
   let colHeights: number[] = [];
   const gap = 16;
+  // 预估卡片高度，用于骨架占位
+  const ESTIMATED_HEIGHT = 220;
   let layoutLock = false;
-  // 定时器显式声明类型
   let scrollTimer: number | undefined;
   let resizeTimer: number | undefined;
 
@@ -82,7 +81,7 @@ import config from "@/config";
     return 2;
   };
 
-  // ========== 灯箱逻辑（参数补全类型） ==========
+  // ========== 灯箱逻辑 ==========
   function openLightbox(src: string, alt: string): void {
     if (!lightbox || !lightboxImg) return;
     lightboxImg.src = src;
@@ -92,7 +91,6 @@ import config from "@/config";
     lightbox.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
   }
-
   function closeLightbox(): void {
     if (!lightbox) return;
     lightbox.classList.add("hidden");
@@ -100,7 +98,6 @@ import config from "@/config";
     lightbox.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
   }
-
   lightboxClose?.addEventListener("click", closeLightbox);
   lightbox?.addEventListener("click", (e) => {
     if (e.target === lightbox) closeLightbox();
@@ -109,7 +106,7 @@ import config from "@/config";
     if (e.key === "Escape") closeLightbox();
   });
 
-  // ========== 预加载图片尺寸（参数补全类型） ==========
+  // ========== 预加载图片尺寸 ==========
   function preloadImgSize(url: string): Promise<{ naturalW: number; naturalH: number }> {
     return new Promise((resolve) => {
       const img = new Image();
@@ -122,52 +119,62 @@ import config from "@/config";
     });
   }
 
-  // ========== 单张图片安全插入（参数补全类型） ==========
-  function appendImage(item: ImageMeta): void {
-    if (!gallery || layoutLock) return;
-    layoutLock = true;
+  // ========== 先渲染骨架占位（立刻显示，不等加载） ==========
+  function renderSkeleton(images: GalleryImage[]): void {
+    if (!gallery) return;
+    gallery.innerHTML = "";
 
     const colCount = getColumnCount();
     const containerWidth = gallery.offsetWidth;
     const itemWidth = (containerWidth - gap * (colCount - 1)) / colCount;
-    const scale = itemWidth / item.naturalW;
-    const itemHeight = item.naturalH * scale;
+    colHeights = new Array(colCount).fill(0);
 
-    const minHeight = Math.min(...colHeights);
-    const colIndex = colHeights.indexOf(minHeight);
+    images.forEach((img) => {
+      const minHeight = Math.min(...colHeights);
+      const colIndex = colHeights.indexOf(minHeight);
 
-    const btn = document.createElement("button");
-    btn.className = "group absolute overflow-hidden rounded-lg border border-border bg-card transition-all duration-200 hover:border-accent/60 hover:shadow-sm";
-    btn.style.width = `${itemWidth}px`;
-    btn.style.height = `${itemHeight}px`;
-    btn.style.left = `${colIndex * (itemWidth + gap)}px`;
-    btn.style.top = `${minHeight}px`;
-    btn.style.opacity = "0";
-    btn.dataset.src = item.url;
-    btn.dataset.name = item.name;
-    btn.setAttribute("aria-label", `View ${item.name}`);
+      const btn = document.createElement("button");
+      btn.className = "group absolute overflow-hidden rounded-lg border border-border bg-muted/30 transition-all duration-200 hover:border-accent/60";
+      btn.style.width = `${itemWidth}px`;
+      btn.style.height = `${ESTIMATED_HEIGHT}px`;
+      btn.style.left = `${colIndex * (itemWidth + gap)}px`;
+      btn.style.top = `${minHeight}px`;
+      btn.dataset.src = img.url;
+      btn.dataset.name = img.name;
+      btn.setAttribute("aria-label", `View ${img.name}`);
 
-    const img = document.createElement("img");
-    img.src = item.url;
-    img.alt = item.name;
-    img.className = "w-full h-full object-cover block transition-transform duration-300 group-hover:scale-105";
-    btn.appendChild(img);
+      const image = document.createElement("img");
+      image.src = img.url;
+      image.alt = img.name;
+      image.loading = "lazy";
+      image.className = "block w-full h-full object-cover opacity-0 transition-opacity duration-300";
+      
+      // 图片加载完成后，修正高度并淡入
+      image.onload = () => {
+        const scale = itemWidth / image.naturalWidth;
+        const realHeight = image.naturalHeight * scale;
+        const heightDiff = realHeight - ESTIMATED_HEIGHT;
 
-    btn.addEventListener("click", () => openLightbox(item.url, item.name));
-    gallery.appendChild(btn);
+        btn.style.height = `${realHeight}px`;
+        image.classList.remove("opacity-0");
+        
+        // 更新对应列高度，后续图片基于新高度排列
+        colHeights[colIndex] += heightDiff;
+        gallery.style.height = `${Math.max(...colHeights)}px`;
+      };
 
-    requestAnimationFrame(() => {
-      btn.style.transition = "opacity 0.3s ease";
-      btn.style.opacity = "1";
+      btn.appendChild(image);
+      btn.addEventListener("click", () => openLightbox(img.url, img.name));
+      gallery.appendChild(btn);
+
+      // 按预估高度更新列高，保证初始分列正确
+      colHeights[colIndex] = minHeight + ESTIMATED_HEIGHT + gap;
     });
 
-    colHeights[colIndex] = minHeight + itemHeight + gap;
     gallery.style.height = `${Math.max(...colHeights)}px`;
-
-    layoutLock = false;
   }
 
-  // ========== 全量重排 ==========
+  // ========== 全量重排（缩放/滚动校准） ==========
   function reRenderAll(): void {
     if (!gallery || imageMetaList.length === 0 || layoutLock) return;
     layoutLock = true;
@@ -208,7 +215,7 @@ import config from "@/config";
     layoutLock = false;
   }
 
-  // ========== 并发加载调度 ==========
+  // ========== 后台静默预加载尺寸，用于校准 ==========
   function loadNext(): void {
     if (loadIndex >= rawImageList.length) {
       setTimeout(reRenderAll, 100);
@@ -217,16 +224,13 @@ import config from "@/config";
 
     const current = loadIndex++;
     const item = rawImageList[current];
-
     preloadImgSize(item.url).then((meta) => {
-      const fullItem: ImageMeta = { ...item, ...meta };
-      imageMetaList.push(fullItem);
-      appendImage(fullItem);
+      imageMetaList.push({ ...item, ...meta });
       loadNext();
     });
   }
 
-  // ========== 滚动防抖校准（可选链消除 null 报错） ==========
+  // ========== 滚动/缩放校准 ==========
   window.addEventListener("scroll", () => {
     clearTimeout(scrollTimer);
     scrollTimer = window.setTimeout(() => {
@@ -236,7 +240,6 @@ import config from "@/config";
     }, 150);
   }, { passive: true });
 
-  // ========== 窗口缩放重排 ==========
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => {
@@ -244,7 +247,7 @@ import config from "@/config";
     }, 200);
   });
 
-  // ========== 初始化 ==========
+  // ========== 初始化：先出骨架，后台加载 ==========
   async function loadGallery(): Promise<void> {
     if (!gallery || !statusEl) return;
     try {
@@ -265,9 +268,12 @@ import config from "@/config";
       statusEl.classList.add("hidden");
       gallery.classList.remove("hidden");
 
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      // 立刻渲染骨架，首屏秒出
+      requestAnimationFrame(() => {
+        renderSkeleton(rawImageList);
+      });
 
-      colHeights = new Array(getColumnCount()).fill(0);
+      // 后台静默预加载尺寸，全部加载完后最终校准一次
       for (let i = 0; i < CONCURRENT_LIMIT; i++) {
         loadNext();
       }
