@@ -1,27 +1,17 @@
 import type { APIRoute } from "astro";
 import satori from "satori";
 import sharp from "sharp";
-import { fontData, experimental_getFontFileURL } from "astro:assets";
-import { getFontPathByWeight } from "@/utils/getFontPathByWeight";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import config from "@/config";
 
-export const GET: APIRoute = async context => {
-  const fonts = fontData["--font-google-sans-code"];
-  const regularFontPath = getFontPathByWeight(fonts, 400);
-  const boldFontPath = getFontPathByWeight(fonts, 700);
+export const GET: APIRoute = async () => {
+  // 直接读取本地字体文件，不再依赖 Astro 的字体系统
+  const regularFontPath = join(process.cwd(), "public/fonts/NotoSansSC-400.ttf");
+  const boldFontPath = join(process.cwd(), "public/fonts/NotoSansSC-700.ttf");
 
-  if (regularFontPath === undefined || boldFontPath === undefined) {
-    throw new Error("Cannot find the font path.");
-  }
-
-  const [regularData, boldData] = await Promise.all([
-    fetch(experimental_getFontFileURL(regularFontPath, context.url)).then(res =>
-      res.arrayBuffer()
-    ),
-    fetch(experimental_getFontFileURL(boldFontPath, context.url)).then(res =>
-      res.arrayBuffer()
-    ),
-  ]);
+  const regularData = readFileSync(regularFontPath);
+  const boldData = readFileSync(boldFontPath);
 
   const svg = await satori(
     {
