@@ -1,0 +1,42 @@
+/* Noto Sans SC - Local Fonts */
+/* 完全离线，不依赖任何网络资源 */
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/NotoSansSC-300.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/NotoSansSC-400.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/NotoSansSC-500.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/NotoSansSC-600.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/NotoSansSC-700.ttf') format('truetype');
+}

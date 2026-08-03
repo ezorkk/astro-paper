@@ -20,6 +20,7 @@
   --muted: #e6e6e6;
   --muted-foreground: #6b7280;
   --border: #ece9e9;
+  --font-google-sans-code: "Noto Sans SC", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 /* Dark theme values */
