@@ -46,31 +46,44 @@ import config from "@/config";
 </div>
 
 <script>
-  const gallery = document.getElementById("gallery");
-  const statusEl = document.getElementById("gallery-status");
-  const lightbox = document.getElementById("lightbox");
-  const lightboxImg = document.getElementById("lightbox-img");
-  const lightboxClose = document.getElementById("lightbox-close");
+  // 定义数据类型
+  interface GalleryImage {
+    url: string;
+    name: string;
+  }
+  interface ImageMeta extends GalleryImage {
+    naturalW: number;
+    naturalH: number;
+  }
 
-  // 已计算好尺寸的图片缓存
-  const imageMetaList = [];
-  let rawImageList = [];
+  // DOM 元素显式断言类型
+  const gallery = document.getElementById("gallery") as HTMLDivElement | null;
+  const statusEl = document.getElementById("gallery-status") as HTMLDivElement | null;
+  const lightbox = document.getElementById("lightbox") as HTMLDivElement | null;
+  const lightboxImg = document.getElementById("lightbox-img") as HTMLImageElement | null;
+  const lightboxClose = document.getElementById("lightbox-close") as HTMLButtonElement | null;
+
+  // 数组显式声明类型，消除隐式 any
+  const imageMetaList: ImageMeta[] = [];
+  let rawImageList: GalleryImage[] = [];
   const CONCURRENT_LIMIT = 4;
   let loadIndex = 0;
-  let colHeights = [];
+  let colHeights: number[] = [];
   const gap = 16;
-  // 布局锁：防止并发加载时同时修改列高
   let layoutLock = false;
+  // 定时器显式声明类型
+  let scrollTimer: number | undefined;
+  let resizeTimer: number | undefined;
 
-  const getColumnCount = () => {
+  const getColumnCount = (): number => {
     const w = window.innerWidth;
     if (w >= 1024) return 4;
     if (w >= 640) return 3;
     return 2;
   };
 
-  // ========== 灯箱逻辑 ==========
-  function openLightbox(src, alt) {
+  // ========== 灯箱逻辑（参数补全类型） ==========
+  function openLightbox(src: string, alt: string): void {
     if (!lightbox || !lightboxImg) return;
     lightboxImg.src = src;
     lightboxImg.alt = alt;
@@ -79,19 +92,25 @@ import config from "@/config";
     lightbox.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
   }
-  function closeLightbox() {
+
+  function closeLightbox(): void {
     if (!lightbox) return;
     lightbox.classList.add("hidden");
     lightbox.classList.remove("flex");
     lightbox.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
   }
-  lightboxClose?.addEventListener("click", closeLightbox);
-  lightbox?.addEventListener("click", e => e.target === lightbox && closeLightbox());
-  document.addEventListener("keydown", e => e.key === "Escape" && closeLightbox());
 
-  // ========== 预加载图片尺寸（仅加载尺寸，不渲染） ==========
-  function preloadImgSize(url) {
+  lightboxClose?.addEventListener("click", closeLightbox);
+  lightbox?.addEventListener("click", (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeLightbox();
+  });
+
+  // ========== 预加载图片尺寸（参数补全类型） ==========
+  function preloadImgSize(url: string): Promise<{ naturalW: number; naturalH: number }> {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => resolve({
@@ -103,8 +122,8 @@ import config from "@/config";
     });
   }
 
-  // ========== 单张图片安全插入（带布局锁） ==========
-  function appendImage(item) {
+  // ========== 单张图片安全插入（参数补全类型） ==========
+  function appendImage(item: ImageMeta): void {
     if (!gallery || layoutLock) return;
     layoutLock = true;
 
@@ -114,7 +133,6 @@ import config from "@/config";
     const scale = itemWidth / item.naturalW;
     const itemHeight = item.naturalH * scale;
 
-    // 找到最矮列
     const minHeight = Math.min(...colHeights);
     const colIndex = colHeights.indexOf(minHeight);
 
@@ -132,28 +150,25 @@ import config from "@/config";
     const img = document.createElement("img");
     img.src = item.url;
     img.alt = item.name;
-    // 移除原生懒加载，避免滚动触发高度突变
     img.className = "w-full h-full object-cover block transition-transform duration-300 group-hover:scale-105";
     btn.appendChild(img);
 
     btn.addEventListener("click", () => openLightbox(item.url, item.name));
     gallery.appendChild(btn);
 
-    // 淡入动画
     requestAnimationFrame(() => {
       btn.style.transition = "opacity 0.3s ease";
       btn.style.opacity = "1";
     });
 
-    // 更新列高与容器高度
     colHeights[colIndex] = minHeight + itemHeight + gap;
     gallery.style.height = `${Math.max(...colHeights)}px`;
 
     layoutLock = false;
   }
 
-  // ========== 全量重排（缩放/滚动结束校准用） ==========
-  function reRenderAll() {
+  // ========== 全量重排 ==========
+  function reRenderAll(): void {
     if (!gallery || imageMetaList.length === 0 || layoutLock) return;
     layoutLock = true;
     gallery.innerHTML = "";
@@ -163,7 +178,7 @@ import config from "@/config";
     const itemWidth = (containerWidth - gap * (colCount - 1)) / colCount;
     colHeights = new Array(colCount).fill(0);
 
-    imageMetaList.forEach(item => {
+    imageMetaList.forEach((item) => {
       const scale = itemWidth / item.naturalW;
       const itemHeight = item.naturalH * scale;
       const minHeight = Math.min(...colHeights);
@@ -194,9 +209,8 @@ import config from "@/config";
   }
 
   // ========== 并发加载调度 ==========
-  function loadNext() {
+  function loadNext(): void {
     if (loadIndex >= rawImageList.length) {
-      // 全部加载完成后，最终校准一次布局
       setTimeout(reRenderAll, 100);
       return;
     }
@@ -204,37 +218,34 @@ import config from "@/config";
     const current = loadIndex++;
     const item = rawImageList[current];
 
-    preloadImgSize(item.url).then(meta => {
-      const fullItem = { ...item, ...meta };
+    preloadImgSize(item.url).then((meta) => {
+      const fullItem: ImageMeta = { ...item, ...meta };
       imageMetaList.push(fullItem);
       appendImage(fullItem);
       loadNext();
     });
   }
 
-  // ========== 滚动防抖校准 ==========
-  let scrollTimer;
+  // ========== 滚动防抖校准（可选链消除 null 报错） ==========
   window.addEventListener("scroll", () => {
     clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => {
-      // 滚动停止后，统一校准一次布局，消除滚动中可能的微小错位
-      if (!gallery.classList.contains("hidden")) {
+    scrollTimer = window.setTimeout(() => {
+      if (gallery && !gallery.classList.contains("hidden")) {
         reRenderAll();
       }
     }, 150);
   }, { passive: true });
 
   // ========== 窗口缩放重排 ==========
-  let resizeTimer;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      if (!gallery.classList.contains("hidden")) reRenderAll();
+    resizeTimer = window.setTimeout(() => {
+      if (gallery && !gallery.classList.contains("hidden")) reRenderAll();
     }, 200);
   });
 
   // ========== 初始化 ==========
-  async function loadGallery() {
+  async function loadGallery(): Promise<void> {
     if (!gallery || !statusEl) return;
     try {
       loadIndex = 0;
@@ -244,7 +255,7 @@ import config from "@/config";
 
       const res = await fetch("/api/gallery/");
       if (!res.ok) throw new Error(`API error: ${res.status}`);
-      rawImageList = await res.json();
+      rawImageList = await res.json() as GalleryImage[];
 
       if (!Array.isArray(rawImageList) || rawImageList.length === 0) {
         statusEl.textContent = "No images yet.";
@@ -254,11 +265,9 @@ import config from "@/config";
       statusEl.classList.add("hidden");
       gallery.classList.remove("hidden");
 
-      // 等待DOM布局生效
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
 
       colHeights = new Array(getColumnCount()).fill(0);
-      // 启动并发加载
       for (let i = 0; i < CONCURRENT_LIMIT; i++) {
         loadNext();
       }
