@@ -4,8 +4,8 @@
 >
 > **适用场景**：国内服务器 / 网络环境不稳定 / 希望完全离线运行
 >
-> **改动文件数**：4 个修改 + 6 个新增
-> **预计操作时间**：10 分钟
+> **改动文件数**：6 个修改 + 6 个新增
+> **预计操作时间**：15 分钟
 
 ---
 
@@ -20,6 +20,8 @@
   - [3.2 src/styles/global.css](#32-srcstylesglobalcss)
   - [3.3 src/styles/theme.css](#33-srcstylesthemecss)
   - [3.4 src/layouts/Layout.astro](#34-srclayoutslayoutastro)
+  - [3.5 src/pages/og.png.ts](#35-srcpagesogpngts)
+  - [3.6 src/pages/posts/[...slug]/index.png.ts](#36-srcpagespostsslugindexpngts)
 - [四、新增文件](#四新增文件)
   - [4.1 src/styles/fonts.css](#41-srcstylesfontscss)
   - [4.2 public/fonts/ 字体文件](#42-publicfonts-字体文件)
@@ -63,6 +65,8 @@ Could not initialize provider `google-c200761b0711fe56`. `unifont` will not be a
 | `src/styles/global.css` | 修改 | 替换 1 行 import |
 | `src/styles/theme.css` | 修改 | 新增 1 行 CSS 变量 |
 | `src/layouts/Layout.astro` | 修改 | 移除 1 行 import + 移除 Font 组件（约 5 行） |
+| `src/pages/og.png.ts` | 修改 | 替换字体获取方式（从 Astro 字体系统 → 本地文件读取） |
+| `src/pages/posts/[...slug]/index.png.ts` | 修改 | 同上，文章 OG 图片生成 |
 | `src/styles/fonts.css` | **新增** | 5 个 @font-face 定义 |
 | `public/fonts/*.ttf` | **新增** | 5 个字体文件（共约 52MB） |
 
@@ -323,6 +327,222 @@ Astro 内置的 `<Font>` 组件会：
 
 ---
 
+### 3.5 src/pages/og.png.ts
+
+**作用**：OG 图片生成功能也依赖字体，需要改成读取本地字体文件
+
+> 💡 什么是 OG 图片？
+> OG（Open Graph）图片是分享到社交媒体时显示的预览图。Astro Paper 会动态生成每张文章的 OG 图片，上面有文章标题和网站名。生成图片需要用字体来渲染文字，所以也依赖字体系统。
+
+#### 修改前
+
+```typescript
+import type { APIRoute } from "astro";
+import satori from "satori";
+import sharp from "sharp";
+import { fontData, experimental_getFontFileURL } from "astro:assets";
+import { getFontPathByWeight } from "@/utils/getFontPathByWeight";
+import config from "@/config";
+
+export const GET: APIRoute = async context => {
+  const fonts = fontData["--font-google-sans-code"];
+  const regularFontPath = getFontPathByWeight(fonts, 400);
+  const boldFontPath = getFontPathByWeight(fonts, 700);
+
+  if (regularFontPath === undefined || boldFontPath === undefined) {
+    throw new Error("Cannot find the font path.");
+  }
+
+  const [regularData, boldData] = await Promise.all([
+    fetch(experimental_getFontFileURL(regularFontPath, context.url)).then(res =>
+      res.arrayBuffer()
+    ),
+    fetch(experimental_getFontFileURL(boldFontPath, context.url)).then(res =>
+      res.arrayBuffer()
+    ),
+  ]);
+
+  // ... 后面的 satori 和 sharp 代码不变 ...
+```
+
+#### 修改后
+
+```typescript
+import type { APIRoute } from "astro";
+import satori from "satori";
+import sharp from "sharp";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import config from "@/config";
+
+export const GET: APIRoute = async () => {
+  // 直接读取本地字体文件，不再依赖 Astro 的字体系统
+  const regularFontPath = join(process.cwd(), "public/fonts/NotoSansSC-400.ttf");
+  const boldFontPath = join(process.cwd(), "public/fonts/NotoSansSC-700.ttf");
+
+  const regularData = readFileSync(regularFontPath);
+  const boldData = readFileSync(boldFontPath);
+
+  // ... 后面的 satori 和 sharp 代码不变 ...
+```
+
+#### 改动说明
+
+**导入的变化：**
+
+| 原来导入 | 现在导入 | 原因 |
+|----------|----------|------|
+| `fontData` from `astro:assets` | `readFileSync` from `node:fs` | 不从 Astro 字体系统拿，直接读文件 |
+| `experimental_getFontFileURL` from `astro:assets` | `join` from `node:path` | 不用 URL 了，用路径拼接 |
+| `getFontPathByWeight` from `@/utils/...` | — | 这个工具函数没用了 |
+
+**字体获取方式的变化：**
+
+- **原来**：从 `fontData["--font-google-sans-code"]` 拿到字体元数据 → 用 `getFontPathByWeight` 找对应字重的 URL → 用 `fetch` 异步拉取字体文件内容
+- **现在**：直接用 `readFileSync` 读取本地 `public/fonts/` 目录下的 ttf 文件
+
+**为什么用 400 和 700 两个字重？**
+
+OG 图片只需要两个字重：
+- **400（Regular）** — 描述文字、副标题
+- **700（Bold）** — 标题、域名
+
+其他字重用不到，不用读。
+
+**为什么用 `process.cwd()`？**
+
+`process.cwd()` 返回当前工作目录，也就是项目根目录。这样写的好处是：
+- 不管 `og.png.ts` 文件在哪个目录，都能正确找到字体文件
+- 本地开发和 Vercel 部署环境都能用
+
+**为什么用 `readFileSync` 而不是异步读取？**
+
+- 字体文件在本地，读取速度极快（几毫秒）
+- 同步代码更简洁，不需要 `await`
+- 构建时只执行一次，不影响性能
+
+**如果不移除会怎样？**
+
+构建时会报错：
+```
+TypeError: fonts is not iterable
+    at getFontPathByWeight (...)
+    at Module.GET (...)
+```
+
+因为 `fontData["--font-google-sans-code"]` 返回 `undefined`（配置删了），然后 `getFontPathByWeight` 尝试遍历 `undefined` 就崩了。
+
+---
+
+### 3.6 src/pages/posts/[...slug]/index.png.ts
+
+**作用**：每篇文章的 OG 图片生成，和首页的 og.png.ts 同理
+
+> 💡 Astro Paper 有两个 OG 图片生成：
+> - `/og.png` — 首页/默认的 OG 图片
+> - `/posts/[...slug]/index.png` — 每篇文章独立的 OG 图片（带文章标题）
+>
+> 两个都要改，不然构建到文章 OG 图片时还会报错。
+
+#### 修改前
+
+```typescript
+import type { APIRoute } from "astro";
+import { getCollection } from "astro:content";
+import { fontData, experimental_getFontFileURL } from "astro:assets";
+import satori from "satori";
+import sharp from "sharp";
+import { getFontPathByWeight } from "@/utils/getFontPathByWeight";
+import { getPostSlug } from "@/utils/getPostPaths";
+import config from "@/config";
+
+// ... getStaticPaths 不变 ...
+
+export const GET: APIRoute = async ({ props, url }) => {
+  if (!config.features.dynamicOgImage) {
+    return new Response(null, { status: 404, statusText: "Not found" });
+  }
+
+  const fonts = fontData["--font-google-sans-code"];
+  const regularFontPath = getFontPathByWeight(fonts, 400);
+  const boldFontPath = getFontPathByWeight(fonts, 700);
+
+  if (regularFontPath === undefined || boldFontPath === undefined) {
+    throw new Error("Cannot find the font path.");
+  }
+
+  const [regularData, boldData] = await Promise.all([
+    fetch(experimental_getFontFileURL(regularFontPath, url)).then(res =>
+      res.arrayBuffer()
+    ),
+    fetch(experimental_getFontFileURL(boldFontPath, url)).then(res =>
+      res.arrayBuffer()
+    ),
+  ]);
+
+  // ... 后面的 satori 和 sharp 代码不变 ...
+```
+
+#### 修改后
+
+```typescript
+import type { APIRoute } from "astro";
+import { getCollection } from "astro:content";
+import satori from "satori";
+import sharp from "sharp";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { getPostSlug } from "@/utils/getPostPaths";
+import config from "@/config";
+
+// ... getStaticPaths 不变 ...
+
+export const GET: APIRoute = async ({ props }) => {
+  if (!config.features.dynamicOgImage) {
+    return new Response(null, { status: 404, statusText: "Not found" });
+  }
+
+  // 直接读取本地字体文件，不再依赖 Astro 的字体系统
+  const regularFontPath = join(process.cwd(), "public/fonts/NotoSansSC-400.ttf");
+  const boldFontPath = join(process.cwd(), "public/fonts/NotoSansSC-700.ttf");
+
+  const regularData = readFileSync(regularFontPath);
+  const boldData = readFileSync(boldFontPath);
+
+  // ... 后面的 satori 和 sharp 代码不变 ...
+```
+
+#### 改动说明
+
+和 `og.png.ts` 的改动**完全一样**：
+
+1. 移除 `fontData`、`experimental_getFontFileURL`、`getFontPathByWeight` 的导入
+2. 新增 `readFileSync` 和 `join` 的导入
+3. 把字体获取逻辑从「从 Astro 字体系统读取」改成「直接读本地文件」
+4. 函数参数里的 `url` 不再需要，可以去掉
+
+**为什么两个文件都要改？**
+
+Astro Paper 的动态 OG 图片功能有两个入口：
+- 首页 OG 图（`/og.png`）
+- 文章 OG 图（`/posts/xxx/index.png`）
+
+它们各自独立生成，都依赖字体。只改一个的话，另一个构建时还是会崩。
+
+**怎么快速判断还有没有漏的？**
+
+全局搜索 `fontData` 或者 `getFontPathByWeight`，如果还有引用就说明还有地方没改：
+
+```bash
+# 在项目根目录执行
+grep -r "fontData" src/
+grep -r "getFontPathByWeight" src/
+```
+
+如果搜索结果为空，就说明全部改完了。
+
+---
+
 ## 四、新增文件
 
 ### 4.1 src/styles/fonts.css
@@ -491,6 +711,19 @@ pnpm dev
 2. 深浅色切换正常
 3. 字体在两种模式下都正常显示
 
+### 5.5 验证生产构建
+
+```bash
+pnpm build
+```
+
+**预期结果**：
+- ✅ 构建成功，没有 `fonts is not iterable` 报错
+- ✅ `/og.png` 正常生成
+- ✅ 所有静态页面正常生成
+
+> ⚠️ 注意：构建前确保 `public/fonts/` 目录下有字体文件，否则 og.png 会因为找不到字体文件而报错。
+
 ---
 
 ## 六、原理说明
@@ -600,7 +833,39 @@ body 元素使用 font-app 类
 - `public/fonts/xxx.ttf` → `dist/fonts/xxx.ttf`
 - 访问路径 `/fonts/xxx.ttf` 正好对应
 
+### Q7: 构建时报错 "fonts is not iterable"
+
+**A**: 这是 OG 图片生成功能在报错。它也依赖 Astro 的字体系统，我们把配置删了它就找不到字体了。
+
+**报错信息**：
+```
+TypeError: fonts is not iterable
+    at getFontPathByWeight (...)
+    at Module.GET (...)
+[ERROR] [build] Caught error rendering /og.png
+```
+
+或者：
+```
+[ERROR] [build] Caught error rendering /posts/xxx/index.png
+```
+
+**有两个 OG 图片文件都要改**：
+1. `src/pages/og.png.ts` — 首页 OG 图片
+2. `src/pages/posts/[...slug]/index.png.ts` — 文章 OG 图片
+
+**解决方法**：两个文件都改成直接读取本地字体文件。详细步骤见：
+- [3.5 src/pages/og.png.ts](#35-srcpagesogpngts)
+- [3.6 src/pages/posts/[...slug]/index.png.ts](#36-srcpagespostsslugindexpngts)
+
+**快速检查有没有漏改**：
+```bash
+grep -r "fontData" src/
+grep -r "getFontPathByWeight" src/
+```
+如果搜索结果为空，就说明全部改完了。
+
 ---
 
-*文档版本：v1.0*
+*文档版本：v1.2*
 *最后更新：2026-08-03*
